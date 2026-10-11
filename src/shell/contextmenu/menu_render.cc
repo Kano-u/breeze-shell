@@ -16,37 +16,50 @@
 
 namespace mb_shell {
 std::optional<menu_render *> menu_render::current{};
-menu_render menu_render::create(int x, int y, menu menu, bool run_js) {
+
+namespace {
+int64_t ms_since(std::chrono::steady_clock::time_point t0) {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - t0)
+        .count();
+}
+} // namespace
+
+std::shared_ptr<ui::render_target> menu_render::render_target() {
+    auto t0 = std::chrono::steady_clock::now();
     if (auto res = ui::render_target::init_global(); !res) {
-        MessageBoxW(NULL, L"Failed to initialize global render target",
-                    L"Error", MB_ICONERROR);
-        return {nullptr, std::nullopt};
+        MessageBoxW(NULL, L"Failed to initialize global render target", L"Error",
+                    MB_ICONERROR);
+        return nullptr;
     }
+    spdlog::info("[perf] menu_rt init_global {}ms", ms_since(t0));
 
     static auto rt = []() {
         static window_proc_hook glfw_proc_hook;
         auto rt = std::make_shared<ui::render_target>();
         rt->transparent = true;
         rt->no_activate = true;
-        rt->capture_all_input = true;
+        // 独占鼠标输入只在面板真正显示时才需要：预热阶段抓住用户的鼠标会出事
+        rt->capture_all_input = false;
         rt->decorated = false;
         rt->topmost = true;
         rt->vsync = config::current->context_menu.vsync;
-        rt->idle_poll_ms = 5;
+        rt->idle_poll_ms = config::current->host.menu_idle_poll_ms;
 
         if (config::current->avoid_resize_ui) {
             rt->width = 3840;
             rt->height = 2159;
         }
 
+        auto t_init = std::chrono::steady_clock::now();
         if (auto res = rt->init(); !res) {
             MessageBoxW(NULL, L"Failed to initialize render target", L"Error",
                         MB_ICONERROR);
             return std::shared_ptr<ui::render_target>{nullptr};
         }
+        spdlog::info("[perf] menu_rt init() {}ms", ms_since(t_init));
 
         glfw_proc_hook.install(rt->hwnd());
-        SetCapture((HWND)rt->hwnd());
         glfw_proc_hook.hooks.push_back([](void *hwnd, void *original_proc,
                                           size_t msg, size_t wparam,
                                           size_t lparam) -> std::optional<int> {
@@ -57,9 +70,31 @@ menu_render menu_render::create(int x, int y, menu menu, bool run_js) {
             return std::nullopt;
         });
 
+        auto t_font = std::chrono::steady_clock::now();
         config::current->apply_fonts_to_nvg(rt->nvg);
+        spdlog::info("[perf] menu_rt apply_fonts {}ms", ms_since(t_font));
         return rt;
     }();
+    return rt;
+}
+
+void menu_render::prewarm() {
+    auto t0 = std::chrono::steady_clock::now();
+    auto rt = render_target();
+    if (!rt) {
+        spdlog::error("prewarm: failed to create menu render target");
+        return;
+    }
+    // 预热线程退出前必须解绑 GL 上下文，否则渲染线程再也没法把它设为 current
+    glfwMakeContextCurrent(nullptr);
+    spdlog::info("[perf] menu_render::prewarm {}ms", ms_since(t0));
+}
+
+menu_render menu_render::create(int x, int y, menu menu, bool run_js) {
+    auto t_target = std::chrono::steady_clock::now();
+    auto rt = render_target();
+    spdlog::info("[perf] menu_render::create render_target {}ms",
+                 ms_since(t_target));
     if (!rt) {
         return {nullptr, std::nullopt};
     }
@@ -91,6 +126,12 @@ menu_render menu_render::create(int x, int y, menu menu, bool run_js) {
     glfwSetWindowAttrib(rt->window, GLFW_MOUSE_PASSTHROUGH, GLFW_FALSE);
 
     rt->show();
+    if (config::current->host.menu_capture_all_input) {
+        // 面板显示期间独占鼠标输入：面板外的点击也会送回这里（用来关面板）
+        rt->capture_all_input = true;
+        SetCapture((HWND)rt->hwnd());
+    }
+    spdlog::info("[perf] menu_render::create show {}ms", ms_since(t_target));
     auto menu_wid = std::make_shared<mouse_menu_widget_main>(
         menu,
         // convert the x and y to the window coordinates
@@ -105,6 +146,8 @@ menu_render menu_render::create(int x, int y, menu menu, bool run_js) {
                     js::js_menu_context::$from_window(menu.parent_window));
             })
             .get();
+    spdlog::info("[perf] menu_render::create js_context {}ms",
+                 ms_since(t_target));
 
     js::menu_info_basic_js menu_info{
         .menu = std::make_shared<js::menu_controller>(menu_wid->menu_wid),
@@ -148,6 +191,10 @@ menu_render::menu_render(std::shared_ptr<ui::render_target> rt,
 menu_render::~menu_render() {
     if (this->rt) {
         current = nullptr;
+        // 面板关掉后必须交还鼠标独占，否则鼠标输入会一直留在这个（已隐藏的）窗口上
+        auto hwnd = (HWND)this->rt->hwnd();
+        if (GetCapture() == hwnd)
+            ReleaseCapture();
     }
 }
 menu_render::menu_render(menu_render &&t) {

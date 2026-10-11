@@ -133,6 +133,14 @@ struct config {
         // 按住右键超过该毫秒数再松开时吞掉这次松开（系统原生菜单不弹出），插件可轮询到
         // 这次长按并弹自己的面板；短按原样放行，系统原生菜单零延迟
         int long_press_ms = 300;
+        // 启动时就把渲染目标（窗口/GL 上下文/字体）建好，第一次弹面板才不用等几秒
+        bool prewarm_menu = true;
+        // 菜单项动作丢到后台线程执行，不堵住渲染线程（ShellExecute 之类的调用很慢）
+        bool async_menu_actions = true;
+        // 面板显示期间是否独占鼠标输入（SetCapture）
+        bool menu_capture_all_input = true;
+        // 面板显示期间的渲染空转间隔；0 = 只在有需要时唤醒（省 CPU），>0 每 N 毫秒重绘一次
+        int menu_idle_poll_ms = 0;
     } host;
 
     struct taskbar {

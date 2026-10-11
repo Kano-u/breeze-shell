@@ -153,6 +153,14 @@ void main() {
         init_host_message_window();
         host_input::install_right_button_long_press(
             config::current->host.long_press_ms);
+        if (config::current->host.prewarm_menu) {
+            // 后台预热菜单渲染目标（窗口/GL 上下文/字体）：不做这一步，用户第一次
+            // 长按右键要等 4 秒才看到面板
+            std::thread([]() {
+                spdlog::info("[perf] prewarm thread start");
+                menu_render::prewarm();
+            }).detach();
+        }
     }
 
     if (filename == "rundll32.exe") {

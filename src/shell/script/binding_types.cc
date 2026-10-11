@@ -1896,27 +1896,24 @@ void menu_controller::show_at(int x, int y) {
     if (!valid() || !$menu_detached)
         return;
 
-    std::promise<void> prom;
-    auto fut = prom.get_future();
-    std::thread([x, y, this, &prom]() mutable {
+    // 面板的构建/显示完全丢给后台线程，调用方（JS 线程）立刻返回：在这里等待会把整个
+    // 插件系统（含所有定时器）冻住，用户看到的就是"长按后卡住、点了没反应"。
+    auto detached = std::move($menu_detached);
+    std::thread([x, y, detached = std::move(detached)]() mutable {
         std::ignore = mb_shell::track_popup_menu(
             menu{
                 .is_top_level = true,
             },
             x, y,
-            [this, &prom](menu_render &render) {
+            [&detached](menu_render &render) {
                 auto menu_new =
                     render.rt->root->get_child<mouse_menu_widget_main>()
                         ->menu_wid;
-                menu_new->children = $menu_detached->children;
-                menu_new->children = $menu_detached->children;
-                $menu = menu_new;
-                $menu_detached = nullptr;
-                prom.set_value();
+                menu_new->children = detached->children;
+                detached = nullptr;
             },
             false);
     }).detach();
-    fut.wait();
 }
 void menu_controller::show_at_cursor() {
     POINT p;

@@ -3,6 +3,7 @@
 #include "binding_qjs.h"
 #include "shell/config.h"
 #include "shell/contextmenu/contextmenu.h"
+#include "shell/contextmenu/menu_render.h"
 #include "shell/diag.h"
 #include "shell/logger.h"
 #include "shell/host_input.h"
@@ -75,6 +76,9 @@ script_context::script_context() {
             ensure_com_initialized();
             return js::js_menu_context::$from_window(GetForegroundWindow());
         });
+        // 面板是否正开着：插件在长按时应该先问一下，别在面板没关时又弹一个
+        module.function("host_menu_open",
+                        []() { return menu_render::current.has_value(); });
 
         if (auto error = module_rejection(
                 *this, eval_string(breeze_script_js, "breeze-script.js"))) {

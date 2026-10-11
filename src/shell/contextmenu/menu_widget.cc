@@ -14,6 +14,7 @@
 #include <cctype>
 #include <fmt/format.h>
 #include <ranges>
+#include <thread>
 #include <spdlog/spdlog.h>
 #include <unordered_map>
 #include <vector>
@@ -83,8 +84,21 @@ float get_item_appear_offset_x(const mb_shell::menu_item_widget *item) {
 void run_item_action(mb_shell::menu_item &item) {
     if (!item.action)
         return;
+    auto action = item.action.value();
+    // 菜单项动作（多半是 ShellExecute / 启动进程）可能很慢；独立宿主里丢到后台线程，
+    // 让面板立刻关闭、渲染线程立刻回到渲染，而不是卡在那里等动作跑完
+    if (config::current->host.async_menu_actions) {
+        std::thread([action = std::move(action)]() mutable {
+            try {
+                action();
+            } catch (std::exception &e) {
+                spdlog::error("Error in menu item action: {}", e.what());
+            }
+        }).detach();
+        return;
+    }
     try {
-        item.action.value()();
+        action();
     } catch (std::exception &e) {
         spdlog::error("Error in menu item action: {}", e.what());
     }
