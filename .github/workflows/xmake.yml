@@ -2,6 +2,7 @@ name: Build
 permissions: write-all
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "master" ]
   pull_request:
@@ -47,18 +48,6 @@ jobs:
         path: ./build/windows/x64/
         name: windows-build
 
-    - name: Setup Scoop
-      uses: MinoruSekine/setup-scoop@v1
-
-    - name: Upload PDBs to Sentry
-      shell: pwsh
-      env:
-        SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-        SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-      run: |
-        scoop install sentry-cli
-        sentry-cli debug-files upload --include-sources ./build/windows/x64/
 
     - name: Create Archive
       if: github.event_name == 'release'
