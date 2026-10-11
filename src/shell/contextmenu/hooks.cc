@@ -29,52 +29,6 @@ std::atomic_int mb_shell::context_menu_hooks::block_js_reload = 0;
 static auto renderer_thread = mb_shell::task_queue{};
 
 namespace {
-
-// 长按右键检测：低层鼠标钩子只记录时刻，NtUserTrackPopupMenuEx 钩子负责判定。
-std::atomic<ULONGLONG> right_button_down_tick{0};
-std::atomic<ULONGLONG> long_press_release_tick{0};
-
-LRESULT CALLBACK right_button_hook_proc(int code, WPARAM wparam,
-                                        LPARAM lparam) {
-    if (code == HC_ACTION) {
-        auto now = GetTickCount64();
-        if (wparam == WM_RBUTTONDOWN) {
-            right_button_down_tick.store(now);
-        } else if (wparam == WM_RBUTTONUP) {
-            auto down = right_button_down_tick.exchange(0);
-            auto threshold = (ULONGLONG)mb_shell::config::current->context_menu
-                                 .long_press_ms;
-            long_press_release_tick.store(
-                down != 0 && now - down >= threshold ? now : 0);
-        }
-    }
-    return CallNextHookEx(nullptr, code, wparam, lparam);
-}
-
-// 低层钩子靠消息队列投递，必须在有消息循环的线程上安装并常驻。
-void install_right_button_long_press_hook() {
-    static std::once_flag once;
-    std::call_once(once, []() {
-        std::thread([]() {
-            auto hook = SetWindowsHookExW(WH_MOUSE_LL, right_button_hook_proc,
-                                          nullptr, 0);
-            if (!hook) {
-                spdlog::error("Failed to install WH_MOUSE_LL hook: {}",
-                              GetLastError());
-                return;
-            }
-            mb_shell::hook_registry::register_uninstaller(
-                [hook]() { UnhookWindowsHookEx(hook); });
-
-            MSG msg;
-            while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-        }).detach();
-    });
-}
-
 std::atomic<void *> current_live_menu_handle = nullptr;
 std::mutex active_root_menu_mutex;
 std::weak_ptr<mb_shell::menu_widget> active_root_menu;
@@ -584,7 +538,6 @@ void mb_shell::context_menu_hooks::install_NtUserTrackPopupMenuEx_hook() {
     auto NtUserTrackPopupMenu =
         win32u.value()->exports("NtUserTrackPopupMenuEx");
     static auto NtUserTrackHook = NtUserTrackPopupMenu->inline_hook();
-    install_right_button_long_press_hook();
 
     NtUserTrackHook->install(+[](HMENU hMenu, int64_t uFlags, int64_t x,
                                  int64_t y, HWND hWnd, int64_t lptpm) -> int32_t {
@@ -592,13 +545,6 @@ void mb_shell::context_menu_hooks::install_NtUserTrackPopupMenuEx_hook() {
             config::current->context_menu.ignore_owner_draw) {
             return NtUserTrackHook->call_trampoline<int32_t>(hMenu, uFlags, x,
                                                              y, hWnd, lptpm);
-        }
-
-        // 只有长按右键（按下超过阈值再松开）才接管为自绘面板，短按放行系统原生菜单
-        auto release_tick = long_press_release_tick.exchange(0);
-        if (release_tick == 0 || GetTickCount64() - release_tick > 1000) {
-            return NtUserTrackHook->call_trampoline<int32_t>(hMenu, uFlags, x, y,
-                                                             hWnd, lptpm);
         }
 
         struct js_reload_guard {
