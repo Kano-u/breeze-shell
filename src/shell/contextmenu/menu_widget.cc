@@ -87,7 +87,7 @@ void run_item_action(mb_shell::menu_item &item) {
     auto action = item.action.value();
     // 菜单项动作（多半是 ShellExecute / 启动进程）可能很慢；独立宿主里丢到后台线程，
     // 让面板立刻关闭、渲染线程立刻回到渲染，而不是卡在那里等动作跑完
-    if (config::current->host.async_menu_actions) {
+    if (mb_shell::config::current->host.async_menu_actions) {
         std::thread([action = std::move(action)]() mutable {
             try {
                 action();
