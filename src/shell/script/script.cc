@@ -7,6 +7,8 @@
 #include "shell/logger.h"
 #include "shell/host_input.h"
 
+#include <objbase.h>
+
 #include <algorithm>
 #include <exception>
 #include <atomic>
@@ -49,6 +51,17 @@ module_rejection(script_context &ctx,
     });
 }
 
+namespace {
+// 跨进程枚举 ShellWindows 拿前台文件夹上下文，需要当前线程已初始化 COM
+void ensure_com_initialized() {
+    static thread_local bool initialized = []() {
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        return true;
+    }();
+    (void)initialized;
+}
+} // namespace
+
 script_context::script_context() {
     on_bind.push_back([this]() {
         auto &module = js->addModule("mshell");
@@ -59,6 +72,7 @@ script_context::script_context() {
         module.function("host_poll_long_press",
                         []() { return host_input::poll_long_press(); });
         module.function("host_context", []() {
+            ensure_com_initialized();
             return js::js_menu_context::$from_window(GetForegroundWindow());
         });
 

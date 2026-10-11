@@ -212,7 +212,7 @@ void populate_folder_view_context_impl(HWND hWnd,
                 auto fv = *event_data.folder_view;
                 fv->$hwnd = hWnd;
                 fv->$controller = psb.p;
-                fv->$render_target = menu_render::current.value()->rt.get();
+                fv->$render_target = menu_render::current ? menu_render::current.value()->rt.get() : nullptr;
 
                 int focusIndex = -1;
                 if (SUCCEEDED(pfv->GetFocusedItem(&focusIndex)) &&
