@@ -95,6 +95,36 @@ void main() {
         }).detach();
     };
 
+    // 独立宿主需要一个自己的消息窗口：菜单构建、JS 上下文这些任务都投递到它的窗口过程里执行
+    auto init_host_message_window = [&]() {
+        std::thread([]() {
+            WNDCLASSEXW wc{};
+            wc.cbSize = sizeof(WNDCLASSEXW);
+            wc.lpfnWndProc = DefWindowProcW;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.lpszClassName = L"breeze_ui_host_window";
+            RegisterClassExW(&wc);
+
+            auto hwnd = CreateWindowExW(0, wc.lpszClassName, L"", 0, 0, 0, 0, 0,
+                                        HWND_MESSAGE, nullptr, wc.hInstance,
+                                        nullptr);
+            if (!hwnd) {
+                spdlog::error("Failed to create host message window: {}",
+                              GetLastError());
+                return;
+            }
+
+            entry::main_window_loop_hook.install(hwnd);
+            spdlog::info("Host message window installed: {}", (void *)hwnd);
+
+            MSG msg;
+            while (GetMessageW(&msg, nullptr, 0, 0)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }).detach();
+    };
+
     std::filesystem::path exe_path(executable_path);
     auto filename =
         exe_path.filename().string() |
@@ -119,6 +149,7 @@ void main() {
     // 独立宿主：不装任何钩子、不碰 explorer 的菜单，只把渲染器和插件系统跑起来。
     if (filename == "breeze-ui.exe") {
         init_render_global();
+        init_host_message_window();
     }
 
     if (filename == "rundll32.exe") {
