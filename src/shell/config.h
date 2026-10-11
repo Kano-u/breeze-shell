@@ -128,6 +128,13 @@ struct config {
         } position;
     } context_menu;
 
+    // 独立宿主 (breeze-ui.exe) 的全局鼠标输入行为
+    struct host {
+        // 按住右键超过该毫秒数再松开时吞掉这次松开（系统原生菜单不弹出），插件可轮询到
+        // 这次长按并弹自己的面板；短按原样放行，系统原生菜单零延迟
+        int long_press_ms = 300;
+    } host;
+
     struct taskbar {
         struct theme {
             struct animation {

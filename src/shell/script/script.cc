@@ -5,6 +5,7 @@
 #include "shell/contextmenu/contextmenu.h"
 #include "shell/diag.h"
 #include "shell/logger.h"
+#include "shell/host_input.h"
 
 #include <algorithm>
 #include <exception>
@@ -53,6 +54,13 @@ script_context::script_context() {
         auto &module = js->addModule("mshell");
         module.function("println", println);
         mshell_bindAll(module);
+
+        // 独立宿主 (breeze-ui.exe) 的鼠标输入：长按右键的接管结果与前台窗口上下文
+        module.function("host_poll_long_press",
+                        []() { return host_input::poll_long_press(); });
+        module.function("host_context", []() {
+            return js::js_menu_context::$from_window(GetForegroundWindow());
+        });
 
         if (auto error = module_rejection(
                 *this, eval_string(breeze_script_js, "breeze-script.js"))) {

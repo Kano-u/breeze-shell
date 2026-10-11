@@ -9,6 +9,7 @@
 #include "error_handler.h"
 #include "hook_registry.h"
 #include "res_string_loader.h"
+#include "host_input.h"
 #include "script/binding_types.hpp"
 #include "breeze-js/quickjspp.hpp"
 #include "script/script.h"
@@ -150,6 +151,8 @@ void main() {
     if (filename == "breeze-ui.exe") {
         init_render_global();
         init_host_message_window();
+        host_input::install_right_button_long_press(
+            config::current->host.long_press_ms);
     }
 
     if (filename == "rundll32.exe") {
