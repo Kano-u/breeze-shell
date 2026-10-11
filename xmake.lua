@@ -96,6 +96,16 @@ target("asan_test")
         set_policy("build.sanitizer.address", true)
     end
 
+-- 独立 UI 宿主：不注入、不装钩子，只跑渲染器 + 插件系统
+target("ui_host")
+    set_kind("binary")
+    set_basename("breeze-ui")
+    set_version(version)
+    add_deps("shell")
+    add_files("src/standalone/*.cc")
+    set_encodings("utf-8")
+    add_ldflags("/subsystem:windows")
+
 target("inject")
     set_kind("binary")
     set_version(version)

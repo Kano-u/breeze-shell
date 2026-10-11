@@ -116,6 +116,11 @@ void main() {
         res_string_loader::init();
     }
 
+    // 独立宿主：不装任何钩子、不碰 explorer 的菜单，只把渲染器和插件系统跑起来。
+    if (filename == "breeze-ui.exe") {
+        init_render_global();
+    }
+
     if (filename == "rundll32.exe") {
         auto command_line = std::wstring(GetCommandLineW());
 
