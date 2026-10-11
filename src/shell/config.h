@@ -119,6 +119,8 @@ struct config {
         bool show_settings_button = true;
         bool patch_explorerframe_dll = true;
 
+        // 长按右键：按住超过该毫秒数再松开才接管为自绘面板，短按放行系统原生菜单
+        int long_press_ms = 300;
         // debug purpose only
         bool search_large_dwItemData_range = false;
 
